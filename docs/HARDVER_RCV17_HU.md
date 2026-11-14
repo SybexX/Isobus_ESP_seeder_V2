@@ -7,9 +7,9 @@ A panel adott lábkészlete miatt kevesebbet tud:
 
 | Van | Nincs |
 |---|---|
-| 2 adagolómotor enkóderrel (a panel motorvezérlője, PWM + DIR), vagy Keya CAN-motor | HX711 mérleg (leforgatási mérlegelés kézzel) |
+| 2 adagolómotor enkóderrel (a panel TB67H451 H-hídjain, vagy külső Cytronnal), vagy Keya CAN-motor | HX711 mérleg (leforgatási mérlegelés kézzel) |
 | 2 tartályszenzor, munkakapcsoló | DS18B20 hőmérők (olajhűtés) |
-| kerékjeladó, turbina-jeladó, leforgató gomb (szabad lábakon, illesztéssel) | hangjelző |
+| kerékjeladó, turbina-jeladó (szabad lábakon, illesztéssel), leforgató gomb | hangjelző |
 | 8 kimenet a PCA9685-ön (kuplungok, terelőszelep, 2 munkalámpa, tartalék) | |
 | nyomásmérés (ADS1115 a panelen), Ethernet (W5500) | |
 
@@ -29,39 +29,52 @@ Ha a permetező firmware már futott a panelen, ez már megtörtént.
 
 ## Lábkiosztás
 
-A motoros bemenetek a Rate Controller programbeli modulbeállítás szerint (Sensor 1 / 2: Flow, Dir, PWM, Bin).
+Forrás: a panel kapcsolási rajza (Rate_control_ESPRC_01_V1.4, 6. lap) és az RC_ESP32 firmware
+(ESP32RC_refactor26_june). A két szabályzó kimenet a panelen **TB67H451 H-híd**: IN1 („Dir”) és IN2 („PWM”)
+mindkettő PWM-jel, az egyik irányhoz az IN1-et, a másikhoz az IN2-t kell hajtani.
 
 | Jel | Láb | Megjegyzés |
 |---|---|---|
-| ISOBUS CAN TX / RX | GPIO17 / GPIO16 | MCP2562, 120 Ω lezárás jumperrel; a Keya motorok és a külső kijelző is ezen |
-| 1. adagoló enkóder (Flow 1) | GPIO21 | belső felhúzás |
-| 2. adagoló enkóder (Flow 2) | GPIO47 | belső felhúzás |
-| 1. motor PWM / DIR | GPIO5 / GPIO4 | a panel motorvezérlője |
-| 2. motor PWM / DIR | GPIO15 / GPIO7 | a panel motorvezérlője |
-| Motorvezérlő engedélyezés | GPIO13 | elektromos (PWM) hajtásnál magas, egyébként alacsony |
-| Munkakapcsoló (Work) | GPIO40 | NO / NC beállítás |
-| 1. / 2. tartály (Bin 1 / 2) | GPIO41 / GPIO42 | NO / NC beállítás |
-| Kerékjeladó | GPIO1 (szabad) | **3,3 V-os láb – optocsatoló vagy feszültségosztó kell** |
-| Turbina-jeladó | GPIO2 (szabad) | **3,3 V-os láb – optocsatoló vagy feszültségosztó kell** |
-| Leforgató nyomógomb | GPIO3 (szabad) | GND-re záró gomb; bekapcsoláskor 3 s nyomva: WiFi szerviz mód |
-| Kimenet 1 / 2 | PCA9685 csatorna 0 / 2 | 1. / 2. adagoló kuplung |
-| Kimenet 3 | csatorna 4 | terelőszelep (nyitás / nyomjelző) |
-| Kimenet 4 / 5 | csatorna 6 / 8 | 1. / 2. munkalámpa (Beállítások → Kiegészítők: a kimenet állítható) |
-| Kimenet 6–8 | csatorna 10 / 12 / 14 | tartalék |
-| Nyomás | ADS1115 A0 | 0–5 V |
+| ISOBUS CAN TX / RX | GPIO17 / GPIO16 | MCP2562; **P3 sorkapocs: 1 = CAN_L, 2 = CAN_H**; 120 Ω lezárás: H3 jumper – meglévő ISOBUS kábelen **nyitva** hagyd. A Keya motorok és a külső kijelző is ezen a buszon |
+| 1. adagoló enkóder | GPIO21 (FLOW1) | optocsatolós bemenet |
+| 2. adagoló enkóder | GPIO47 (FLOW2) | optocsatolós bemenet |
+| 1. motor | **MOT9** sorkapocs – IN2 GPIO5 (előre), IN1 GPIO4 (hátra) | TB67H451 (max. 3,5 A) |
+| 2. motor | **ZONE1** sorkapocs – IN2 GPIO15 (előre), IN1 GPIO7 (hátra) | TB67H451 (max. 3,5 A) |
+| Külső Cytron | H2 tüskesor: ugyanezek a jelek (IN1 = DIR, IN2 = PWM) | nagyobb motorhoz |
+| Cytron-engedélyező | GPIO13 | csak régebbi paneleken; elektromos hajtásnál magas |
+| Munkakapcsoló | GPIO40 (WORK1) | optocsatolós; NO / NC beállítás |
+| 1. / 2. tartály | **GPIO42 (BIN1) / GPIO41 (BIN2)** | optocsatolós; NO / NC beállítás |
+| Kerékjeladó | GPIO1 (H4) | **3,3 V-os láb – optocsatoló vagy feszültségosztó kell** |
+| Turbina-jeladó | GPIO2 (H4) | **3,3 V-os láb – optocsatoló vagy feszültségosztó kell** |
+| Leforgató nyomógomb | GPIO9 (H26) | GND-re záró gomb; bekapcsoláskor 3 s nyomva: WiFi szerviz mód |
+| Kimenet 1 / 2 | PCA9685, sorkapocs 1A–1B / 2A–2B | 1. / 2. adagoló kuplung |
+| Kimenet 3 | 3A–3B | terelőszelep (nyitás / nyomjelző) |
+| Kimenet 4 / 5 | 4A–4B / 5A–5B | 1. / 2. munkalámpa (Beállítások → Kiegészítők: a kimenet állítható) |
+| Kimenet 6–8 | 6A–8B | tartalék |
+| Nyomás | ADS1115 AIN0 (ADC 5V / 4–20 mA sorkapocs) | 0–5 V |
 | Ethernet W5500 | MISO37 MOSI35 SCLK36 CS38 INT45 RST48 | AgOpenGPS, web, Windows-program |
 
-A PCA9685 kimenetek H-hidak (kimenetenként két csatorna, az eredeti RC firmware kiosztása): bekapcsolt
-kimenetnél a páros csatorna magas, a páratlan alacsony; kikapcsoltnál mindkettő alacsony. A beállításokban a
-„Relé n” megnevezés ezen a panelen a „Kimenet n”-t jelenti (a számozás a Waveshare reléivel azonos).
+A tartályok a rajz szerint vannak bekötve (BIN1 = GPIO42). Ha a Rate Controller programban fordítva
+állítottad be (Sensor 1 → 41), a vetőgépen az 1. tartály a BIN1 sorkapocs.
 
-A szabad lábak (GPIO1–3) közvetlenül az ESP32-re mennek: 12 V-os jeladót **csak illesztéssel** (pl. PC817
+A PCA9685 kimenetek is TB67H451 H-hidak (k. kimenet: csatorna 2k−2 és 2k−1, az eredeti firmware kiosztása).
+Bekapcsolt kimenetnél **A = +12 V, B = 0 V**, kikapcsoltnál mindkét kapocs szabad (nagy impedancia):
+a kuplungot / lámpát az **A és B kapocs közé** kösd. A beállításokban a „Relé n” megnevezés ezen a panelen a
+„Kimenet n”-t jelenti (a számozás a Waveshare reléivel azonos).
+
+Szabad lábak: GPIO1, 2 (H4) és 9–12 (H26). A GPIO3 és 46 is a H26-on van, de strapping lábak – nem használjuk.
+A szabad lábak közvetlenül az ESP32-re mennek: 12 V-os jeladót **csak illesztéssel** (pl. PC817
 optocsatoló, vagy osztó + Zener) szabad rákötni. A jel aktív alacsony (GND-re húz), belső felhúzással.
+
+A panelből 8 MB-os és 16 MB-os flash-ű is készült; ez a firmware a **16 MB-osra** (WROOM-1U-N16) való.
+PSRAM-os (R8) modullal a panel nem működik (a GPIO35–37 az Etherneté).
 
 ## Beállítás
 
-* Beállítások → Hajtás, motor → Hajtás: **Elektr. PWM**, Motorvezérlő: **PWM + DIR** (a panel saját vezérlője).
-  „Csak PWM” módban is a DIR láb alacsony kimenet marad (nem lebeg).
+* Beállítások → Hajtás, motor → Hajtás: **Elektr. PWM**, Motorvezérlő:
+  * a panel saját MOT9 / ZONE1 kimenetén (TB67H451): **PWM + PWM**,
+  * a H2-re kötött külső Cytronnal: **PWM + DIR**,
+  * „Csak PWM” (visszafordítás nélkül) mindkettővel működik: az IN1 / DIR alacsony kimenet marad.
 * A Rate Controller programban bepipált **Invert** a forgásirányt fordítja: itt Motorszabályzás →
   **Forgásirány megfordítása**.
 * Keya CAN-motorral: Hajtás = **Elektr. Keya**; a motorok a 17/16-os CAN-en, a többi ugyanaz, mint a Waveshare-en.

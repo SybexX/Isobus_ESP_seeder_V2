@@ -26,7 +26,10 @@ enum class Expander : std::uint8_t { None, PCA9555, TCA9554, PCA9685 };
 // két motor enkóderrel (PWM + DIR a panel motorvezérlőjén), két tartályszenzor, munkakapcsoló,
 // kerék- és turbina-jeladó, leforgató gomb, munkalámpák és kuplungok a PCA9685 H-híd kimenetein,
 // nyomás az ADS1115-ön, Ethernet (W5500). Nincs: mérleg (HX711), hőmérők (DS18B20), hangjelző.
-// Lábkiosztás a Rate Controller programbeli modulbeállítás szerint (Sensor 1 / 2: Flow, Dir, PWM, Bin).
+// Lábkiosztás: Rate_control_ESPRC_01_V1.4 kapcsolási rajz (6. lap) + RC_ESP32 firmware. A két szabályzó
+// kimenet a panelen TB67H451 H-híd (IN1 = „Dir”, IN2 = „PWM”, mindkettő PWM): 1. csatorna GPIO4 / 5 → MOT9,
+// 2. csatorna GPIO7 / 15 → ZONE1 sorkapocs; a H2 tüskesoron külső Cytronhoz is kijönnek.
+// A flow / bin / work bemenetek optocsatolósak (felhúzó feszültség jumperrel).
 // FONTOS: a GPIO45 (strapping) a W5500 INT-re kötött → a flash VDD_SPI eFuse-t 3,3 V-ra kell égetni
 // az első feltöltés előtt (docs/HARDVER_RCV17_HU.md).
 #if defined(SEEDER_BOARD_RCV17)
@@ -39,12 +42,12 @@ constexpr Expander EXPANDER = Expander::PCA9685;    // 8 H-híd kimenet: k. kime
 constexpr std::uint8_t EXPANDER_ADDR = 0x40;
 constexpr std::uint8_t ADS1115_ADDR = 0x48;         // a panelen (0–5 V / 4–20 mA)
 
-constexpr Pin WHEEL = G(1);                         // szabad láb: jelillesztés kell (3,3 V!)
-constexpr Pin FAN = G(2);                           // szabad láb: jelillesztés kell (3,3 V!)
-constexpr Pin METER[2] = {G(21), G(47)};            // Flow Sensor 1 / 2: motorenkóder (vagy tengelyjeladó)
-constexpr Pin WORK = G(40);                         // munkakapcsoló (Work pin)
-constexpr Pin HOPPER[2] = {G(41), G(42)};           // Bin 1 / 2: tartályszenzor
-constexpr Pin CRANK_BTN = G(3);                     // szabad láb: leforgató gomb (GND-re zár)
+constexpr Pin WHEEL = G(1);                         // H4 szabad láb: jelillesztés kell (3,3 V!)
+constexpr Pin FAN = G(2);                           // H4 szabad láb: jelillesztés kell (3,3 V!)
+constexpr Pin METER[2] = {G(21), G(47)};            // FLOW1 / FLOW2 (optós): motorenkóder vagy tengelyjeladó
+constexpr Pin WORK = G(40);                         // WORK1 (optós)
+constexpr Pin HOPPER[2] = {G(42), G(41)};           // BIN1 / BIN2 (optós) – a rajz szerint BIN1 = GPIO42
+constexpr Pin CRANK_BTN = G(9);                     // H26 szabad láb (nem strapping): leforgató gomb, GND-re zár
 // kimenetek a PCA9685-ön – a számozás a Waveshare reléivel azonos (k. kimenet = „k. relé”)
 constexpr Pin CLUTCH[2] = {X(0), X(1)};             // kimenet 1 / 2
 constexpr Pin VALVE = X(2);                         // kimenet 3
@@ -54,10 +57,12 @@ constexpr Pin COOLER_REV = X(6);                    // kimenet 7
 constexpr int BUZZER_GPIO = -1;
 constexpr bool HAS_ETH = true;
 constexpr int ETH_SCLK = 36, ETH_MOSI = 35, ETH_MISO = 37, ETH_CS = 38, ETH_INT = 45, ETH_RST = 48;
-constexpr int MOTOR_PWM_GPIO[2] = {5, 15};          // Sensor 1 / 2 PWM
-constexpr int MOTOR_AUX_GPIO[2] = {4, 7};           // Sensor 1 / 2 Dir
-constexpr int DRIVER_EN_GPIO = 13;                  // a panel motorvezérlőjének engedélyezése
-constexpr bool DIR_DEFAULT = true;                  // a panel motorvezérlője PWM + DIR
+// előre = IN2 („PWM”), hátra = IN1 („Dir”). A panel TB67H451-éhez „PWM + PWM” mód kell (IN1 / IN2 felváltva);
+// a H2-re kötött külső Cytronhoz „PWM + DIR” (IN1 = DIR, IN2 = PWM).
+constexpr int MOTOR_PWM_GPIO[2] = {5, 15};          // 1. csatorna IN2 (MOT9) / 2. csatorna IN2 (ZONE1)
+constexpr int MOTOR_AUX_GPIO[2] = {4, 7};           // 1. csatorna IN1 / 2. csatorna IN1
+constexpr int DRIVER_EN_GPIO = 13;                  // régebbi paneleken Cytron-engedélyező (újakon nincs bekötve)
+constexpr bool DIR_DEFAULT = true;                  // „csak PWM” módban is IN1 = alacsony kimenet (ne lebegjen)
 constexpr int HX711_DATA = -1, HX711_CLOCK = -1;
 constexpr int ONEWIRE_GPIO = -1;
 
@@ -67,18 +72,18 @@ struct PinInfo {
     const char *note;
 };
 constexpr PinInfo PINMAP[] = {
-    {"CAN TX / RX – GPIO17 / GPIO16", "ISOBUS (250 kbit/s), Keya motorok, külső kijelző", "MCP2562, 120 Ω lezárás jumperrel"},
-    {"Flow Sensor 1 – GPIO21", "1. adagoló: motorenkóder (vagy tengelyjeladó)", "belső felhúzás"},
-    {"Flow Sensor 2 – GPIO47", "2. adagoló: motorenkóder (vagy tengelyjeladó)", "belső felhúzás"},
-    {"Sensor 1: PWM GPIO5 / Dir GPIO4", "1. adagolómotor", "a panel motorvezérlője (PWM + DIR)"},
-    {"Sensor 2: PWM GPIO15 / Dir GPIO7", "2. adagolómotor", "a panel motorvezérlője (PWM + DIR)"},
-    {"GPIO13", "Motorvezérlő engedélyezés", "elektromos hajtásnál magas"},
-    {"Work – GPIO40", "Munkakapcsoló (gép lent)", "NO vagy NC (beállítás)"},
-    {"Bin 1 / 2 – GPIO41 / GPIO42", "1. / 2. tartály leürülésgátló", "NO vagy NC (beállítás)"},
-    {"GPIO1 (szabad)", "Kerékjeladó", "3,3 V-os láb: optocsatoló / feszültségosztó kell!"},
-    {"GPIO2 (szabad)", "Turbina fordulat", "3,3 V-os láb: optocsatoló / feszültségosztó kell!"},
-    {"GPIO3 (szabad)", "Leforgató nyomógomb (bekapcsoláskor 3 s: WiFi)", "GND-re záró gomb"},
-    {"PCA9685 kimenet 1 / 2", "1. / 2. adagoló kuplung", "H-híd: csatorna 0 / 2 (a párja 1 / 3 alacsony)"},
+    {"CAN TX / RX – GPIO17 / GPIO16", "ISOBUS (250 kbit/s), Keya motorok, külső kijelző", "P3 sorkapocs: 1 CAN_L, 2 CAN_H; 120 Ω: H3 jumper (meglévő buszon nyitva)"},
+    {"FLOW1 – GPIO21", "1. adagoló: motorenkóder (vagy tengelyjeladó)", "optós bemenet"},
+    {"FLOW2 – GPIO47", "2. adagoló: motorenkóder (vagy tengelyjeladó)", "optós bemenet"},
+    {"MOT9 – IN2 GPIO5 / IN1 GPIO4", "1. adagolómotor (TB67H451)", "Motorvezérlő = PWM + PWM; H2-n külső Cytron: PWM + DIR"},
+    {"ZONE1 – IN2 GPIO15 / IN1 GPIO7", "2. adagolómotor (TB67H451)", "mint fent"},
+    {"GPIO13", "Cytron-engedélyező (régebbi panelek)", "elektromos hajtásnál magas"},
+    {"WORK1 – GPIO40", "Munkakapcsoló (gép lent)", "optós; NO vagy NC (beállítás)"},
+    {"BIN1 / BIN2 – GPIO42 / GPIO41", "1. / 2. tartály leürülésgátló", "optós; NO vagy NC (beállítás)"},
+    {"H4: GPIO1", "Kerékjeladó", "3,3 V-os láb: optocsatoló / feszültségosztó kell!"},
+    {"H4: GPIO2", "Turbina fordulat", "3,3 V-os láb: optocsatoló / feszültségosztó kell!"},
+    {"H26: GPIO9", "Leforgató nyomógomb (bekapcsoláskor 3 s: WiFi)", "GND-re záró gomb"},
+    {"PCA9685 kimenet 1 / 2 (1A–1B / 2A–2B)", "1. / 2. adagoló kuplung", "TB67H451: A = +, B = −; csatorna 0 / 2"},
     {"PCA9685 kimenet 3", "Nyitás / nyomjelző terelőszelep", "csatorna 4"},
     {"PCA9685 kimenet 4 / 5", "1. / 2. munkalámpa (állítható)", "csatorna 6 / 8"},
     {"PCA9685 kimenet 6–8", "Tartalék", "csatorna 10 / 12 / 14"},
