@@ -16,16 +16,22 @@ A panel adott lábkészlete miatt kevesebbet tud:
 Kiadási fájlok: `VETOGEP_RCV17_16MB_vXXX_FULL_0x0.bin` (USB) és `VETOGEP_RCV17_16MB_vXXX_OTA.bin` (OTA).
 **A Waveshare fájlját ne töltsd erre a panelre, és fordítva** – más lábak, más CAN-láb.
 
-## Első feltöltés előtt: VDD_SPI eFuse (minden új panelen!)
+## Első feltöltés új, nyers panelre (eFuse 3,3 V)
 
-A GPIO45 strapping láb a W5500 INT-re kötött. Hogy a W5500 induláskor ne kapcsolja 1,8 V-ra a flash-t,
-a flash feszültségét eFuse-zal 3,3 V-ra kell rögzíteni (egyszeri, visszafordíthatatlan):
+A GPIO45 strapping láb a W5500 INT-re kötött: az INT induláskor magas, ezért a nyers panel a 3,3 V-os
+flash-t 1,8 V-ról próbálja járatni – nem indul, és a böngészős feltöltő sem tud írni rá. A flash
+feszültségét egyszer, véglegesen eFuse-zal 3,3 V-ra kell égetni. Ehhez kész Windows-szkript van:
 
-```
-espefuse.py --port COMx set_flash_voltage 3.3V
-```
+* a GitHub kiadásban: **`RCV17_ELSO_FELTOLTES.zip`** (forrás: `tools/rcv17_elso_feltoltes/`);
+* kicsomagolás után tedd mellé a `…RCV17_16MB_vXXX_FULL_0x0.bin` fájlt, és indítsd az
+  **`ELSO_FELTOLTES_RCV17.bat`**-ot (dupla katt);
+* a szkript letölti az Espressif esptool / espefuse programot, kiválasztod a COM portot, letöltő módba
+  teszed a panelt (BOOT nyomva → RESET → BOOT elenged), kiolvassa az eFuse-t, és ha kell, kétszeri
+  megerősítés után beégeti (`set_flash_voltage 3.3V`); táp ki / be után feltölti a FULL firmware-t 0x0-ra;
+* ha az eFuse már be van égetve (pl. a másik firmware-rel), csak feltölt. A Waveshare-fájlt nem engedi.
 
-Ha a permetező firmware már futott a panelen, ez már megtörtént.
+Kézzel: `python -m espefuse --chip esp32s3 --port COMx set_flash_voltage 3.3V`, táp ki / be, majd a
+FULL fájl 0x0-ra (esptool vagy https://espressif.github.io/esptool-js/). Részletek: `tools/rcv17_elso_feltoltes/OLVASS_EL.txt`.
 
 ## Lábkiosztás
 

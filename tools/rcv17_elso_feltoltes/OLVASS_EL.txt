@@ -1,0 +1,34 @@
+ESP32S3 RCv1.7 – ELSŐ FELTÖLTÉS ÚJ (NYERS) PANELRE
+==================================================
+
+Miért macerás?
+  A panel GPIO45 lába (ez választja a flash tápfeszültségét induláskor) a W5500 Ethernet INT
+  lábára van kötve. Az INT induláskor magas, ezért az ESP32-S3 a flash-t 1,8 V-ról próbálja
+  járatni – a 3,3 V-os flash így nem működik: a panel nem indul, és a böngészős feltöltő sem tud
+  írni rá (csak úgy, ha a GPIO45-öt induláskor GND-re húzod, és minden reset után újra).
+  Végleges megoldás: a flash feszültségét egyszer eFuse-zal 3,3 V-ra kell égetni (VDD_SPI).
+  Ez egyszeri és visszafordíthatatlan, és ennél a panelnél (3,3 V-os flash) pontosan ez kell.
+
+Kell hozzá
+  * Windows 10/11 PC internettel (az első futáskor letölti az Espressif esptool programot)
+  * USB kábel a panel natív micro-USB csatlakozójához
+  * a firmware: ...RCV17_16MB_vXXX_FULL_0x0.bin (PERMETEZO_... vagy VETOGEP_...) a GitHub kiadásból
+    (legujabb) – ebbe a mappába téve. A WAVESHARE fájlt a szkript nem engedi feltölteni.
+
+Lépések
+  1. Csomagold ki ezt a mappát, és tedd mellé a FULL_0x0.bin fájlt.
+  2. Dupla kattintás: ELSO_FELTOLTES_RCV17.bat
+  3. Válaszd ki a COM portot.
+  4. Letöltő mód: BOOT gomb nyomva → RESET megnyom/elenged → BOOT elenged.
+  5. A szkript kiolvassa az eFuse-t. Ha még nincs beégetve: "IGEN", majd az espefuse kérésére "BURN".
+  6. Húzd ki és dugd vissza a panelt, újra letöltő mód → a szkript feltölti a firmware-t (0x0).
+  7. RESET – kész. Ezután a frissítés már OTA-val vagy a böngészős feltöltővel is megy.
+
+Kézzel, a szkript nélkül (Python esptool-lal)
+  pip install esptool
+  python -m espefuse --chip esp32s3 --port COM5 summary            (VDD_SPI_FORCE / XPD / TIEH)
+  python -m espefuse --chip esp32s3 --port COM5 set_flash_voltage 3.3V
+  (táp ki / be, letöltő mód)
+  python -m esptool --chip esp32s3 --port COM5 write_flash 0x0 ...RCV17_16MB_vXXX_FULL_0x0.bin
+
+Ha már egyszer beégetted (pl. a másik firmware-rel), a szkript ezt felismeri, és csak feltölt.

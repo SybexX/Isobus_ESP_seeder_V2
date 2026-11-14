@@ -145,7 +145,11 @@ jobs:
           NOTES="Vetőgép-vezérlő firmware v${VER} – ${GITHUB_SHA::7} ($(date -u +%Y-%m-%d))
 
           VETOGEP_WAVESHARE_16MB_* – Waveshare ESP32-S3-ETH-8DI-8RO-C (16 MB, CAN GPIO17/18)
+          VETOGEP_RCV17_16MB_*     – ESP32S3 RCv1.7 Rate Controller (16 MB, PSRAM nélkül, CAN GPIO17/16)
           VETOGEP_WINDOWS_*.exe    – Windows kezelőprogram (a terminál felülete + diagnosztika), telepítés nélkül fut
+
+          RCV17_ELSO_FELTOLTES.zip – új, nyers RCv1.7 panel első feltöltése Windowson (eFuse 3,3 V + FULL firmware):
+            kicsomagolni, mellé tenni a ...RCV17_16MB_..._FULL_0x0.bin-t, dupla katt: ELSO_FELTOLTES_RCV17.bat
 
           ELSŐ TELEPÍTÉS USB-n (https://espressif.github.io/esptool-js/):
             *_FULL_0x0.bin  → Flash Address: 0x0
@@ -154,6 +158,8 @@ jobs:
             *_OTA.bin
 
           A FULL fájlt soha ne töltsd fel az OTA oldalon!"
+          # RCv1.7 első feltöltés (eFuse 3,3 V + FULL firmware) Windows-szkript csomagja
+          (cd tools && zip -qr ../dist/RCV17_ELSO_FELTOLTES.zip rcv17_elso_feltoltes)
           gh release delete legujabb --cleanup-tag --yes || true
-          gh release create legujabb dist/*.bin dist/*.exe dist/MANIFEST_*.json \
+          gh release create legujabb dist/*.bin dist/*.exe dist/*.zip dist/MANIFEST_*.json \
             --title "Legújabb firmware (v${VER})" --notes "$NOTES" --target "$GITHUB_SHA"
