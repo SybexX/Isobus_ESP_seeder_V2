@@ -41,7 +41,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        env: [waveshare_8di8ro]
+        env: [waveshare_8di8ro, rcv17_16mb]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

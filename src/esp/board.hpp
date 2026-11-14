@@ -1,5 +1,6 @@
 #pragma once
-// Hardverprofil: Waveshare ESP32-S3-ETH-8DI-8RO-C (16 MB flash, CAN GPIO17/18, 8 optós bemenet
+// Hardverprofilok: alapból Waveshare (lent), SEEDER_BOARD_RCV17-tel az ESP32S3 RCv1.7 panel.
+// Waveshare ESP32-S3-ETH-8DI-8RO-C (16 MB flash, CAN GPIO17/18, 8 optós bemenet
 // GPIO4–11, 8 relé TCA9554-en, W5500 Ethernet). Itt fér el minden: motoros hajtás, HX711 mérleg,
 // DS18B20 hőmérők, ADS1115 (külső modul szintillesztővel), AgOpenGPS.
 //
@@ -18,8 +19,74 @@ constexpr Pin NONE{};
 constexpr Pin G(int n) { return Pin{PinKind::Gpio, n}; }
 constexpr Pin X(int bit) { return Pin{PinKind::Expander, bit}; }
 
-enum class Expander : std::uint8_t { None, PCA9555, TCA9554 };
+enum class Expander : std::uint8_t { None, PCA9555, TCA9554, PCA9685 };
 
+// ---------------------------------------------------------------------------------------------
+// ESP32S3 RCv1.7 (AgOpenGPS Rate Controller panel, Vági F. / Gunics B.) – „kisebb tudású” vetőgép-panel:
+// két motor enkóderrel (PWM + DIR a panel motorvezérlőjén), két tartályszenzor, munkakapcsoló,
+// kerék- és turbina-jeladó, leforgató gomb, munkalámpák és kuplungok a PCA9685 H-híd kimenetein,
+// nyomás az ADS1115-ön, Ethernet (W5500). Nincs: mérleg (HX711), hőmérők (DS18B20), hangjelző.
+// Lábkiosztás a Rate Controller programbeli modulbeállítás szerint (Sensor 1 / 2: Flow, Dir, PWM, Bin).
+// FONTOS: a GPIO45 (strapping) a W5500 INT-re kötött → a flash VDD_SPI eFuse-t 3,3 V-ra kell égetni
+// az első feltöltés előtt (docs/HARDVER_RCV17_HU.md).
+#if defined(SEEDER_BOARD_RCV17)
+constexpr const char *NAME = "ESP32S3 RCv1.7 (16 MB, PSRAM nélkül)";
+constexpr int CAN_TX_GPIO = 17;
+constexpr int CAN_RX_GPIO = 16;                     // MCP2562, 120 Ω lezárás jumperrel
+constexpr int I2C_SDA = 8;
+constexpr int I2C_SCL = 18;
+constexpr Expander EXPANDER = Expander::PCA9685;    // 8 H-híd kimenet: k. kimenet = 2k / 2k+1 csatorna
+constexpr std::uint8_t EXPANDER_ADDR = 0x40;
+constexpr std::uint8_t ADS1115_ADDR = 0x48;         // a panelen (0–5 V / 4–20 mA)
+
+constexpr Pin WHEEL = G(1);                         // szabad láb: jelillesztés kell (3,3 V!)
+constexpr Pin FAN = G(2);                           // szabad láb: jelillesztés kell (3,3 V!)
+constexpr Pin METER[2] = {G(21), G(47)};            // Flow Sensor 1 / 2: motorenkóder (vagy tengelyjeladó)
+constexpr Pin WORK = G(40);                         // munkakapcsoló (Work pin)
+constexpr Pin HOPPER[2] = {G(41), G(42)};           // Bin 1 / 2: tartályszenzor
+constexpr Pin CRANK_BTN = G(3);                     // szabad láb: leforgató gomb (GND-re zár)
+// kimenetek a PCA9685-ön – a számozás a Waveshare reléivel azonos (k. kimenet = „k. relé”)
+constexpr Pin CLUTCH[2] = {X(0), X(1)};             // kimenet 1 / 2
+constexpr Pin VALVE = X(2);                         // kimenet 3
+constexpr Pin LAMP[2] = {X(3), X(4)};               // kimenet 4 / 5
+constexpr Pin COOLER = X(5);                        // kimenet 6 (hőmérő nincs – nem használt)
+constexpr Pin COOLER_REV = X(6);                    // kimenet 7
+constexpr int BUZZER_GPIO = -1;
+constexpr bool HAS_ETH = true;
+constexpr int ETH_SCLK = 36, ETH_MOSI = 35, ETH_MISO = 37, ETH_CS = 38, ETH_INT = 45, ETH_RST = 48;
+constexpr int MOTOR_PWM_GPIO[2] = {5, 15};          // Sensor 1 / 2 PWM
+constexpr int MOTOR_AUX_GPIO[2] = {4, 7};           // Sensor 1 / 2 Dir
+constexpr int DRIVER_EN_GPIO = 13;                  // a panel motorvezérlőjének engedélyezése
+constexpr bool DIR_DEFAULT = true;                  // a panel motorvezérlője PWM + DIR
+constexpr int HX711_DATA = -1, HX711_CLOCK = -1;
+constexpr int ONEWIRE_GPIO = -1;
+
+struct PinInfo {
+    const char *pin;
+    const char *function;
+    const char *note;
+};
+constexpr PinInfo PINMAP[] = {
+    {"CAN TX / RX – GPIO17 / GPIO16", "ISOBUS (250 kbit/s), Keya motorok, külső kijelző", "MCP2562, 120 Ω lezárás jumperrel"},
+    {"Flow Sensor 1 – GPIO21", "1. adagoló: motorenkóder (vagy tengelyjeladó)", "belső felhúzás"},
+    {"Flow Sensor 2 – GPIO47", "2. adagoló: motorenkóder (vagy tengelyjeladó)", "belső felhúzás"},
+    {"Sensor 1: PWM GPIO5 / Dir GPIO4", "1. adagolómotor", "a panel motorvezérlője (PWM + DIR)"},
+    {"Sensor 2: PWM GPIO15 / Dir GPIO7", "2. adagolómotor", "a panel motorvezérlője (PWM + DIR)"},
+    {"GPIO13", "Motorvezérlő engedélyezés", "elektromos hajtásnál magas"},
+    {"Work – GPIO40", "Munkakapcsoló (gép lent)", "NO vagy NC (beállítás)"},
+    {"Bin 1 / 2 – GPIO41 / GPIO42", "1. / 2. tartály leürülésgátló", "NO vagy NC (beállítás)"},
+    {"GPIO1 (szabad)", "Kerékjeladó", "3,3 V-os láb: optocsatoló / feszültségosztó kell!"},
+    {"GPIO2 (szabad)", "Turbina fordulat", "3,3 V-os láb: optocsatoló / feszültségosztó kell!"},
+    {"GPIO3 (szabad)", "Leforgató nyomógomb (bekapcsoláskor 3 s: WiFi)", "GND-re záró gomb"},
+    {"PCA9685 kimenet 1 / 2", "1. / 2. adagoló kuplung", "H-híd: csatorna 0 / 2 (a párja 1 / 3 alacsony)"},
+    {"PCA9685 kimenet 3", "Nyitás / nyomjelző terelőszelep", "csatorna 4"},
+    {"PCA9685 kimenet 4 / 5", "1. / 2. munkalámpa (állítható)", "csatorna 6 / 8"},
+    {"PCA9685 kimenet 6–8", "Tartalék", "csatorna 10 / 12 / 14"},
+    {"I2C SDA8 / SCL18", "PCA9685 (0x40), ADS1115 (0x48)", "400 kHz"},
+    {"ADS1115 A0", "Nyomás (lenyomás)", "0–5 V"},
+    {"W5500: MISO37 MOSI35 SCLK36 CS38 INT45 RST48", "Ethernet", "AgOpenGPS, web, Windows-program"},
+};
+#else
 constexpr const char *NAME = "Waveshare ESP32-S3-ETH-8DI-8RO-C (16 MB)";
 constexpr int CAN_TX_GPIO = 17;
 constexpr int CAN_RX_GPIO = 18;
@@ -43,11 +110,13 @@ constexpr Pin COOLER_REV = X(6);                    // relé 7: hűtőventiláto
 constexpr int BUZZER_GPIO = 46;                     // a panel hangjelzője (passzív, LEDC 2,7 kHz)
 // beépített W5500 Ethernet (SPI) – AgOpenGPS / AgIO hálózat
 constexpr bool HAS_ETH = true;
-constexpr int ETH_SCLK = 15, ETH_MOSI = 13, ETH_MISO = 14, ETH_CS = 16, ETH_INT = 12;
+constexpr int ETH_SCLK = 15, ETH_MOSI = 13, ETH_MISO = 14, ETH_CS = 16, ETH_INT = 12, ETH_RST = -1;
 constexpr int MOTOR_PWM_GPIO[2] = {47, 48};         // motorvezérlő PWM (előre / IBT-2 RPWM)
 // második motorvezérlő-jel: PWM + DIR módban a DIR, IBT-2 módban az LPWM (hátra). Csak irányváltós
 // bekötésnél kapcsoljuk be (a GPIO45 indításkori „strapping” láb: indításkor nem húzhatja fel semmi).
 constexpr int MOTOR_AUX_GPIO[2] = {21, 45};
+constexpr int DRIVER_EN_GPIO = -1;                 // motorvezérlő engedélyező (itt nincs)
+constexpr bool DIR_DEFAULT = false;                 // alap motorvezérlő: a beállítás szerint
 constexpr int HX711_DATA = 1, HX711_CLOCK = 2;
 constexpr int ONEWIRE_GPIO = 3;                     // 2 db DS18B20, 4,7 kΩ felhúzó a 3,3 V-ra
 
@@ -86,6 +155,8 @@ constexpr PinInfo PINMAP[] = {
     {"GPIO12–16 (belső)", "W5500 Ethernet (INT, MOSI, MISO, SCLK, CS)", "AgOpenGPS / AgIO hálózat"},
     {"GPIO46", "Hangjelző (a panelen)", "leforgatás: fordulatonként rövid, célnál hosszú"},
 };
+
+#endif
 
 // Pergésszűrés: ennél rövidebb impulzusközt eldobunk
 constexpr std::uint32_t WHEEL_MIN_PERIOD_US = 1000;   // max. 1 kHz

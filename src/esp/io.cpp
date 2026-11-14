@@ -113,7 +113,9 @@ constexpr std::uint8_t expander_output_mask() {
         if (p.kind == PinKind::Expander) m = static_cast<std::uint8_t>(m | (1u << p.num));
     return m;
 }
-constexpr std::uint8_t OUT_MASK = expander_output_mask();
+// PCA9555-nél a többi láb bemenet; a TCA9554 (8 relé) és a PCA9685 (8 H-híd) minden lába kimenet –
+// így a beállítható lámpakimenet a „tartalék” (8.) relére / kimenetre is kerülhet
+constexpr std::uint8_t OUT_MASK = board::EXPANDER == board::Expander::PCA9555 ? expander_output_mask() : 0xFF;
 
 bool i2c_add(std::uint8_t addr, i2c_master_dev_handle_t &dev) {
     if (dev) return true;
@@ -139,10 +141,40 @@ bool reg_read(i2c_master_dev_handle_t dev, std::uint8_t reg, std::uint8_t *data,
 }
 
 // PCA9555: 0 bemenet, 2 kimenet, 6 konfig (port0). TCA9554: 0 bemenet, 1 kimenet, 3 konfig.
+// PCA9685 (RCv1.7): 16 PWM csatorna, kimenetenként egy H-híd: k. kimenet = 2k (BE) / 2k+1 (mindig KI).
 constexpr bool PCA = board::EXPANDER == board::Expander::PCA9555;
+constexpr bool P96 = board::EXPANDER == board::Expander::PCA9685;
 constexpr std::uint8_t REG_IN = 0x00, REG_OUT = PCA ? 0x02 : 0x01, REG_CFG = PCA ? 0x06 : 0x03;
 
+bool pca9685_init() {
+    const std::uint8_t mode1[] = {0x00, 0x20};   // auto-increment, ébren
+    const std::uint8_t mode2[] = {0x01, 0x04};   // totem-pole kimenet
+    return exp_dev && i2c_master_transmit(exp_dev, mode1, 2, I2C_TIMEOUT_MS) == ESP_OK &&
+           i2c_master_transmit(exp_dev, mode2, 2, I2C_TIMEOUT_MS) == ESP_OK;
+}
+/// mind a 16 csatorna: a kimenet bitje (k) → a 2k. csatorna teljesen BE, a 2k+1. mindig KI
+bool pca9685_write(std::uint8_t bits) {
+    std::uint8_t buf[1 + 16 * 4];
+    buf[0] = 0x06;   // LED0_ON_L
+    for (int ch = 0; ch < 16; ++ch) {
+        const bool on = (ch % 2) == 0 && ((bits >> (ch / 2)) & 1u);
+        std::uint8_t *q = buf + 1 + ch * 4;
+        q[0] = 0;
+        q[1] = on ? 0x10 : 0x00;   // ON_H bit4: teljesen be
+        q[2] = 0;
+        q[3] = on ? 0x00 : 0x10;   // OFF_H bit4: teljesen ki
+    }
+    return exp_dev && i2c_master_transmit(exp_dev, buf, sizeof(buf), I2C_TIMEOUT_MS) == ESP_OK;
+}
+
 bool expander_write_outputs() {
+    if (P96) {
+        const std::uint8_t b = static_cast<std::uint8_t>(exp_out_wanted.load() & OUT_MASK);
+        if (!pca9685_write(b)) return false;
+        exp_out_written = b;
+        exp_out_valid = true;
+        return true;
+    }
     // nem kimeneti bitek: 1 (PCA9555 bemenetek felhúzott szintje)
     const std::uint8_t v = static_cast<std::uint8_t>((exp_out_wanted.load() & OUT_MASK) | (PCA ? ~OUT_MASK : 0));
     if (!reg_write(exp_dev, REG_OUT, &v, 1)) return false;
@@ -155,6 +187,11 @@ bool expander_attach() {
     if (board::EXPANDER == board::Expander::None || !bus) return false;
     if (!i2c_add(board::EXPANDER_ADDR, exp_dev)) return false;
     exp_out_valid = false;
+    if (P96) {   // csak kimenetek: indításkor minden KI
+        if (!pca9685_init()) return false;
+        if (!outputs_enabled.load()) return pca9685_write(0);
+        return expander_write_outputs();
+    }
     if (!outputs_enabled.load()) {
         // még nincs kimeneti parancs: minden láb bemenet (nagy impedancia) marad
         const std::uint8_t all_in = 0xFF;
@@ -335,6 +372,11 @@ void set_out(const Pin &p, bool level, std::uint8_t &exp_bits) {
 }
 
 void gpio_outputs_init() {
+    if (board::DRIVER_EN_GPIO >= 0) {   // motorvezérlő engedélyező: induláskor tiltva
+        gpio_reset_pin(static_cast<gpio_num_t>(board::DRIVER_EN_GPIO));
+        gpio_set_direction(static_cast<gpio_num_t>(board::DRIVER_EN_GPIO), GPIO_MODE_OUTPUT);
+        gpio_set_level(static_cast<gpio_num_t>(board::DRIVER_EN_GPIO), 0);
+    }
     const Pin outs[] = {board::CLUTCH[0], board::CLUTCH[1], board::VALVE,     board::LAMP[0],
                         board::LAMP[1],   board::COOLER,    board::COOLER_REV};
     for (const Pin &p : outs) {
@@ -454,7 +496,15 @@ void sample_task(void *) {
         if (outputs_enabled.load()) {
             const std::uint8_t want = static_cast<std::uint8_t>((exp_out_wanted.load() & OUT_MASK) | (PCA ? ~OUT_MASK : 0));
             if (!exp_out_valid || want != exp_out_written || t - last_refresh > 1000000) {
-                if (!exp_out_valid) {
+                if (P96) {
+                    if (!expander_write_outputs() && ++failures >= 20) {
+                        exp_ok = false;
+                        last_probe = t;
+                        web::log("ERROR", "PCA9685 írási hiba: a kimenetek nem frissülnek");
+                    } else if (exp_out_valid) {
+                        failures = 0;
+                    }
+                } else if (!exp_out_valid) {
                     expander_write_outputs();
                     const std::uint8_t cfg = static_cast<std::uint8_t>(0xFF & ~OUT_MASK);
                     reg_write(exp_dev, REG_CFG, &cfg, 1);
@@ -680,7 +730,11 @@ void apply(const seeder::Outputs &o, const seeder::Settings &s) {
     // Keya CAN-motornál (3) nincs PWM: a motor a CAN-en kap célfordulatot
     const bool keya = seeder::keya_drive(s);
     const int drv = seeder::electric_drive(s) && !keya ? std::max<int>(0, std::min<int>(2, s.motor_driver)) : 0;
-    if (pwm_ready[0] || pwm_ready[1]) aux_setup(drv);
+    // a RCv1.7 saját motorvezérlője PWM + DIR: „csak PWM” módban is kimenet a DIR (alacsony), ne lebegjen
+    const int aux = board::DIR_DEFAULT && drv == 0 ? 1 : drv;
+    if (pwm_ready[0] || pwm_ready[1]) aux_setup(aux);
+    if (board::DRIVER_EN_GPIO >= 0)
+        gpio_set_level(static_cast<gpio_num_t>(board::DRIVER_EN_GPIO), seeder::electric_drive(s) && !keya ? 1 : 0);
     for (int i = 0; i < 2; ++i) {
         if (!pwm_ready[i]) continue;
         const float pct = keya ? 0.0f : std::max(0.0f, std::min(100.0f, o.motor_pwm_pct[i]));
@@ -688,7 +742,7 @@ void apply(const seeder::Outputs &o, const seeder::Settings &s) {
         const bool rev = drv != 0 && (o.motor_rev[i] != (s.motor_invert != 0));
         const float fwd_pct = drv == 2 && rev ? 0.0f : pct;
         const float aux_pct = drv == 2 && rev ? pct : 0.0f;
-        if (drv == 1 && board::MOTOR_AUX_GPIO[i] >= 0)
+        if (aux == 1 && board::MOTOR_AUX_GPIO[i] >= 0)
             gpio_set_level(static_cast<gpio_num_t>(board::MOTOR_AUX_GPIO[i]), rev ? 1 : 0);
         if (std::fabs(fwd_pct - pwm_now[i].load()) >= 0.05f) {
             ledc_put(LEDC_CHANNEL_0 + i, fwd_pct);

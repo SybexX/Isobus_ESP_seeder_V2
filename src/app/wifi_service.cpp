@@ -18,7 +18,7 @@ const char *WifiService::source_name(Source s) {
     case Source::Vt: return "VT";
     case Source::Display: return "külső kijelző";
     case Source::Web: return "web";
-    case Source::Input: return "bemenet (IN8)";
+    case Source::Input: return "leforgató gomb";
     }
     return "?";
 }

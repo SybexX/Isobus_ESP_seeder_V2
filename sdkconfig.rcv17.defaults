@@ -1,0 +1,4 @@
+# ESP32S3 RCv1.7 panel (ESP32-S3-WROOM-1U-N16): 16 MB flash, NINCS PSRAM.
+# A sdkconfig.defaults után töltődik (platformio.ini: SDKCONFIG_DEFAULTS), az ottani PSRAM-beállítást írja felül.
+# CONFIG_SPIRAM is not set
+# A GPIO35/36/37 a W5500-é (oktális PSRAM nélküli modul). A flash VDD_SPI eFuse-zal 3,3 V-ra égetve.

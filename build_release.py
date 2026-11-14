@@ -25,6 +25,8 @@ APP_ADDRESS = 0x20000
 BOARDS = {
     "waveshare_8di8ro": ("VETOGEP_WAVESHARE_16MB", "partitions_16mb.csv", 0x700000, 0x1000000,
                          "Waveshare ESP32-S3-ETH-8DI-8RO-C (16 MB, CAN GPIO17/18)"),
+    "rcv17_16mb": ("VETOGEP_RCV17_16MB", "partitions_16mb.csv", 0x700000, 0x1000000,
+                   "ESP32S3 RCv1.7 Rate Controller (16 MB, PSRAM nélkül, CAN GPIO17/16)"),
 }
 
 

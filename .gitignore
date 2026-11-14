@@ -8,3 +8,4 @@ __pycache__/
 sdkconfig
 sdkconfig.*
 !sdkconfig.defaults
+!sdkconfig.rcv17.defaults

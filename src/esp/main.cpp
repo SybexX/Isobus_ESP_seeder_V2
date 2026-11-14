@@ -254,7 +254,7 @@ extern "C" void app_main() {
                 boot_hold_s += CYCLE_S;
                 if (!boot_hold_done && boot_hold_s >= 3.0f) {
                     boot_hold_done = true;
-                    web::log("WARN", "Leforgató gomb (IN8) bekapcsoláskor nyomva tartva: WiFi szerviz mód");
+                    web::log("WARN", "Leforgató gomb bekapcsoláskor nyomva tartva: WiFi szerviz mód");
                     isobus_app->wifi_request(true, app::WifiService::Source::Input);
                 }
                 hw.crank_button = false;

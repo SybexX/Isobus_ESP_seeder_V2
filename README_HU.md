@@ -127,12 +127,21 @@ Olajhőmérséklet → „hőmérők felcserélése”.
 **A kimenetek** csak az első vezérlési ciklus után kapnak meghajtást, induláskor a vetés KI
 (kuplungok a beállított típus szerint „old”, motor 0 %).
 
+### ESP32S3 RCv1.7 (AgOpenGPS Rate Controller panel) – második, kisebb tudású panel
+
+Ugyanaz a firmware (VT, web, AgOpenGPS, Keya, külső kijelző), a panel adott lábaival: 2 motor enkóderrel
+(a panel PWM + DIR motorvezérlője), 2 tartály, munkakapcsoló, kerék- / turbina-jeladó és leforgató gomb
+szabad lábakon, 8 kimenet a PCA9685-ön, nyomás, Ethernet. Nincs mérleg, hőmérő, hangjelző.
+Kiadás: `VETOGEP_RCV17_16MB_vXXX_FULL_0x0.bin` / `…_OTA.bin`. Lábkiosztás, eFuse és bekötés:
+[docs/HARDVER_RCV17_HU.md](docs/HARDVER_RCV17_HU.md).
+
 ## Telepítés
 
 A GitHub Actions minden `main` ágra küldött változásnál lefordítja a firmware-t és a
 **„legujabb”** kiadásba teszi:
 
-* `VETOGEP_WAVESHARE_16MB_vXXX_FULL_0x0.bin` / `…_OTA.bin`
+* `VETOGEP_WAVESHARE_16MB_vXXX_FULL_0x0.bin` / `…_OTA.bin` – Waveshare panel
+* `VETOGEP_RCV17_16MB_vXXX_FULL_0x0.bin` / `…_OTA.bin` – RCv1.7 panel (a kettő nem cserélhető fel)
 
 **Első telepítés USB-n:** https://espressif.github.io/esptool-js/ → Connect → a `FULL_0x0.bin`
 fájl **0x0** címre → Program.

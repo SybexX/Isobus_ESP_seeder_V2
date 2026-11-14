@@ -83,6 +83,16 @@ void on_event(void *, esp_event_base_t base, std::int32_t id, void *data) {
 
 bool eth_init() {
     if (!board::HAS_ETH) return false;
+    if (board::ETH_RST >= 0) {   // W5500 reset láb (RCv1.7): rövid impulzus, majd elengedve
+        gpio_config_t g{};
+        g.pin_bit_mask = 1ULL << board::ETH_RST;
+        g.mode = GPIO_MODE_OUTPUT;
+        gpio_config(&g);
+        gpio_set_level(static_cast<gpio_num_t>(board::ETH_RST), 0);
+        vTaskDelay(pdMS_TO_TICKS(2));
+        gpio_set_level(static_cast<gpio_num_t>(board::ETH_RST), 1);
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
     spi_bus_config_t bus{};
     bus.mosi_io_num = board::ETH_MOSI;
     bus.miso_io_num = board::ETH_MISO;
