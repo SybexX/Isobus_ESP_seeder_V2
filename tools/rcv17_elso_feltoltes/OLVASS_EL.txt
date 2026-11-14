@@ -20,7 +20,7 @@ Lépések
   2. Dupla kattintás: ELSO_FELTOLTES_RCV17.bat
   3. Válaszd ki a COM portot.
   4. Letöltő mód: BOOT gomb nyomva → RESET megnyom/elenged → BOOT elenged.
-  5. A szkript kiolvassa az eFuse-t. Ha még nincs beégetve: "IGEN", majd az espefuse kérésére "BURN".
+  5. A szkript kiolvassa az eFuse-t. Ha még nincs beégetve: "IGEN", majd "BURN" (mindkettőt a szkript kérdezi).
   6. Húzd ki és dugd vissza a panelt, újra letöltő mód → a szkript feltölti a firmware-t (0x0).
   7. RESET – kész. Ezután a frissítés már OTA-val vagy a böngészős feltöltővel is megy.
 

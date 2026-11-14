@@ -116,9 +116,14 @@ if ($done) {
     Say 'Ez EGYSZERI és VISSZAFORDÍTHATATLAN – ennél a panelnél pontosan ez kell (16 MB, 3,3 V-os flash).' Yellow
     $ok = Read-Host 'Beégessem? Írd be: IGEN'
     if ($ok -ne 'IGEN') { Fail 'Megszakítva, az eFuse nem változott.' }
-    Say 'Az espefuse még egyszer megerősítést kér: ott írd be nagybetűvel: BURN' Yellow
-    & $Tool.espefuse @('--chip', 'esp32s3', '--port', $Port, '--before', 'no_reset', 'set_flash_voltage', '3.3V')
-    if ($LASTEXITCODE -ne 0) { Fail 'Az eFuse égetése nem sikerült.' }
+    # Az espefuse saját BURN-kérdése PowerShellből nem kapja meg a billentyűzetet (a kérdés el sem látszik,
+    # és "Aborting." lesz belőle), ezért a második megerősítést itt kérjük, az espefuse-t --do-not-confirm-mal hívjuk.
+    $ok2 = Read-Host 'Utolsó megerősítés – írd be nagybetűvel: BURN'
+    if ($ok2 -cne 'BURN') { Fail 'Megszakítva, az eFuse nem változott.' }
+    Say 'Égetés...' Yellow
+    $burn = (& $Tool.espefuse @('--chip', 'esp32s3', '--port', $Port, '--before', 'no_reset', '--do-not-confirm', 'set_flash_voltage', '3.3V') 2>&1 | Out-String)
+    Say $burn DarkGray
+    if ($LASTEXITCODE -ne 0 -or $burn -match 'Aborting|A fatal error') { Fail 'Az eFuse égetése nem sikerült (lásd fent).' }
     $st = Read-VddSpi
     if (-not ($st.bits.VDD_SPI_FORCE -eq '1' -and $st.bits.VDD_SPI_XPD -eq '1' -and $st.bits.VDD_SPI_TIEH -eq '1')) {
         Say ($st.text) DarkGray
